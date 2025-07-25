@@ -2,8 +2,11 @@ ipython>=9.4.0
 kokoro>=0.9.4
 matplotlib>=3.10.3
 pandas>=2.3.1
-pip>=25.1.1
+# pip>=25.1.1 # Streamlit Cloud handles pip, often best not to explicitly list it
 soundfile>=0.13.1
 streamlit>=1.47.0
 streamlit-advanced-audio>=0.1.2
 torch>=2.7.1
+# Add spaCy itself if not already a dependency of another package, and the model
+spacy==3.8.7 # Ensure spacy itself is listed if your code imports spacy
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
