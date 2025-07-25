@@ -7,7 +7,7 @@ from kokoro import KPipeline
 import soundfile as sf
 import io
 import numpy as np
-from streamlit_advanced_audio import audix , WaveSurferOptions
+from streamlit_advanced_audio import audix, WaveSurferOptions
 # Set up the title of the Streamlit app
 st.title("🔊 Enhanced AI Text-to-Speech with Kokoro-TTS")
 
@@ -17,6 +17,7 @@ This application utilizes the `hexgrad/Kokoro-TTS` model to convert your text in
 You can now select from a variety of voices to customize the audio output.
 Enter your text in the box below, choose a voice, and click the 'Generate Speech' button.
 """)
+
 
 # A list of available voices
 # Sourced from the official documentation and community findings
@@ -33,71 +34,71 @@ available_voices = {
     "British Male (Lewis)": "bm_lewis",
 }
 
-# Voice selection dropdown
-selected_voice_name = st.selectbox("Choose a voice:", list(available_voices.keys()))
-voice_id = available_voices[selected_voice_name]
+# --- Caching and Callback Setup ---
+@st.cache_resource
+def get_pipeline():
+    return KPipeline(lang_code='a')
 
-# Text input from the user
-text_input = st.text_input("Enter the text you want to convert to speech:", 
-                           placeholder="Type your text here...", icon=  "📝")
+@st.cache_data
+def generate_speech(text, voice_id):
+    pipeline = get_pipeline()
+    generator = pipeline(text, voice=voice_id)
+    audio_chunks = [audio for _, _, audio in generator]
+    if audio_chunks:
+        full_audio = np.concatenate(audio_chunks)
+        buffer = io.BytesIO()
+        sf.write(buffer, full_audio, 24000, format='WAV')
+        buffer.seek(0)
+        return buffer
+    return None
 
-# A button to trigger the speech generation
-if st.button("Generate Speech"):
-    if text_input:
-        try:
-            # Initialize the Kokoro-TTS pipeline
-            # Using 'a' for American English as a base, the voice parameter will override this
-            with st.spinner("Initializing the model and generating audio..."):
-                pipeline = KPipeline(lang_code='a')
-
-                # Generate speech from the input text with the selected voice
-                generator = pipeline(text_input, voice=voice_id)
-
-                # The generator yields audio chunks; we'll concatenate them
-                audio_chunks = []
-                for i, (gs, ps, audio) in enumerate(generator):
-                    audio_chunks.append(audio)
-
-                if audio_chunks:
-                    # Concatenate the audio chunks into a single numpy array
-                    full_audio = np.concatenate(audio_chunks)
-
-                    # Create an in-memory buffer for the audio
-                    buffer = io.BytesIO()
-                    sf.write(buffer, full_audio, 24000, format='WAV')
-                    buffer.seek(0)
-
-                    # Advanced audio playback with custom styling
-                    st.subheader("Generated Audio Playback")
-                    audix(buffer, format="audio/wav", autoplay=True)
-                    wavesurfer_options = WaveSurferOptions(
-                        wave_color="#2B88D9",
-                        progress_color="#b91d47",
-                        height=100
-                    )
-
-                    # # Play the generated audio and track playback status
-                    # result = audix(buffer, wavesurfer_options=wavesurfer_options)
-                    # if result:
-                    #     st.write(f"Current Time: {result['currentTime']}s")
-                    #     if result['selectedRegion']:
-                    #         st.write(f"Selected Region: {result['selectedRegion']['start']} - {result['selectedRegion']['end']}s")
-
-                    # Provide a download link for the generated audio
-                    st.download_button(
-                        label="Download Audio",
-                        data=buffer,
-                        file_name="generated_speech.wav",
-                        mime="audio/wav"
-                    )
-                    st.success("Audio generated successfully!")
-                else:
-                    st.warning("The model did not produce any audio output.")
-
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+def generate_speech_callback():
+    text = st.session_state.get("text_input", "")
+    voice_name = st.session_state.get("voice_name", list(available_voices.keys())[0])
+    voice_id = available_voices[voice_name]
+    if text:
+        buffer = generate_speech(text, voice_id)
+        st.session_state["audio_buffer"] = buffer
+        st.session_state["voice_id"] = voice_id
     else:
-        st.warning("Please enter some text to generate speech.")
+        st.session_state["audio_buffer"] = None
+
+# --- Widgets with session state and callbacks ---
+st.selectbox(
+    "Choose a voice:",
+    list(available_voices.keys()),
+    key="voice_name",
+    on_change=generate_speech_callback
+)
+
+st.text_input(
+    "Enter the text you want to convert to speech:",
+    key="text_input",
+    placeholder="Type your text here...",
+    on_change=generate_speech_callback
+)
+
+if st.button("Generate Speech"):
+    generate_speech_callback()
+
+# --- Playback and download if audio exists ---
+if st.session_state.get("audio_buffer"):
+    st.subheader("Generated Audio Playback")
+    audix(st.session_state["audio_buffer"], format="audio/wav", autoplay=True)
+    wavesurfer_options = WaveSurferOptions(
+        wave_color="#2B88D9",
+        progress_color="#b91d47",
+        height=100
+    )
+    st.download_button(
+        label="Download Audio",
+        data=st.session_state["audio_buffer"],
+        file_name="generated_speech.wav",
+        mime="audio/wav"
+    )
+    st.success("Audio generated successfully!")
+elif "audio_buffer" in st.session_state and st.session_state["audio_buffer"] is None:
+    st.warning("The model did not produce any audio output.")
 
 # Add a footer with model information
 st.markdown("---")
